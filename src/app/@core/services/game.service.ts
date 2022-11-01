@@ -9,6 +9,7 @@ export class GameService {
   parameters: Parameters | null = null;
   table$ = new BehaviorSubject<any>(null);
   hunterTable$ = new BehaviorSubject<any>(null);
+  hunter$ = new BehaviorSubject<any>(null);
 
   constructor() {}
 
@@ -41,10 +42,86 @@ export class GameService {
       return total;
     }, []);
 
-    this.table$.next(table);
-
     const hunterTable = [...table.map((row) => [...row])];
+    const home = hunterTable[hunterTable.length - 1][0];
+    const isHomeNull = Boolean(home);
+
+    if (isHomeNull) {
+      const nullIndexes = this.searchIndex(table, null);
+      hunterTable[nullIndexes.y][nullIndexes.y] = home;
+      table[nullIndexes.y][nullIndexes.y] = home;
+    }
+
+    // hunterTable[hunterTable.length - 1][0] = {
+    //   arrows: parameters.arrows,
+    //   ailments: [],
+    //   position: { y: hunterTable.length - 1, x: 0 },
+    //   name: 'hunter',
+    //   direction: 'right',
+    // };
+    table[table.length - 1][0] = 'entry';
+    hunterTable[hunterTable.length - 1][0] = ['safety'];
+
+    [...Array(parameters.wells)].forEach(() => {
+      const well = this.searchIndex(hunterTable, 'well');
+      this.setAilment(hunterTable, well, 'death');
+      this.setAilments(hunterTable, well, 'wind');
+    });
+
+    const wampus = this.searchIndex(hunterTable, 'wampus');
+    this.setAilment(hunterTable, wampus, 'death');
+    this.setAilments(hunterTable, wampus, 'smell');
+
+    const gold = this.searchIndex(hunterTable, 'gold');
+    this.setAilment(hunterTable, gold, 'shine');
 
     this.hunterTable$.next(hunterTable);
+    this.table$.next(table);
+  }
+
+  searchIndex(table: any[][], value: any) {
+    return table.reduce((total: any, current: any[], index, self) => {
+      if (!self[total.y ? total.y : 0][total.x]) {
+        total.y = index;
+        total.x = current.findIndex((cell) => value === cell);
+      }
+      return total;
+    }, {});
+  }
+
+  get(table: any[][], { x, y }: { x: number; y: number }) {
+    return table[y] && table[y][x] ? table[y][x] : null;
+  }
+
+  set(table: any[][], { x, y }: { x: number; y: number }, value: any) {
+    if (table[y] === undefined || table[y][x] === undefined) {
+      return;
+    }
+    table[y][x] = value;
+  }
+
+  setAilment(table: any, position: any, ailment: string) {
+    this.set(
+      table,
+      position,
+      !this.get(table, position) ||
+        typeof this.get(table, position) === 'string'
+        ? [ailment]
+        : [...this.get(table, position), ailment].filter(
+            (value, index, self) => self.indexOf(value) === index
+          )
+    );
+  }
+
+  setAilments(table: any[][], position: any, ailment: string) {
+    const left = { ...position, x: position.x - 1 };
+    const right = { ...position, x: position.x + 1 };
+    const top = { ...position, y: position.y + 1 };
+    const bottom = { ...position, y: position.y - 1 };
+
+    this.setAilment(table, left, ailment);
+    this.setAilment(table, right, ailment);
+    this.setAilment(table, top, ailment);
+    this.setAilment(table, bottom, ailment);
   }
 }
