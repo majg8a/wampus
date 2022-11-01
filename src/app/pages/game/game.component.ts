@@ -29,24 +29,22 @@ import { GameService } from 'src/app/@core/services/game.service';
         hunterTable: hunterTable$ | async
       } as state"
     >
-      <div
-        class="relative grid content-center justify-center w-screen h-screen"
-      >
+      <div class="relative grid content-center justify-center w-full h-screen">
         <div class="border-2 border-black overflow-hidden">
           <div class="flex " *ngFor="let row of state.table">
             <div
               *ngFor="let col of row"
               class="w-20 h-20 border-2 border-black"
             >
-              {{ col }}
+              <!-- {{ col }} -->
             </div>
           </div>
         </div>
 
         <div class="absolute self-center justify-self-center">
           <div *ngFor="let row of state.hunterTable" class="flex">
-            <div *ngFor="let col of row" class="w-20 h-20">
-              {{ col }}
+            <div *ngFor="let cell of row" class="w-20 h-20">
+              {{ cell | json }}
             </div>
           </div>
         </div>
@@ -90,7 +88,7 @@ export class GameComponent {
   //   })
   // );
 
-  hunterTable$ = new BehaviorSubject<any>(null);
+  hunterTable$ = this.gameService.hunterTable$;
   // hunterTable$ = this.table$.pipe(
   //   map((table) => {
   //     const newTable = [...table].map((a) => [...a]);
