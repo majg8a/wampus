@@ -63,40 +63,17 @@ export class GameService {
     hunterTable[hunterTable.length - 1][0] = ['safety'];
 
     [...Array(parameters.wells)].forEach(() => {
-      const position = this.searchIndex(hunterTable, 'well');
-      // hunterTable[position.y][position.x] =
-      //   typeof hunterTable[position.y][position.x] !== 'string'
-      //     ? [...hunterTable[position.y][position.x], 'death']
-      //     : ['death'];
-
-      console.log(position);
-
-      this.set(hunterTable, position, ['death']);
-
-      const left = { ...position, x: position.x - 1 };
-      const right = { ...position, x: position.x + 1 };
-      const top = { ...position, y: position.y + 1 };
-      const bottom = { ...position, y: position.y - 1 };
-
-      // this.set(
-      //   hunterTable,
-      //   left,
-      //   !this.get(hunterTable, left) ||
-      //     typeof this.get(hunterTable, left) === 'string'
-      //     ? ['wind']
-      //     : [...this.get(hunterTable, left), 'wind'].filter(
-      //         (value, index, self) => self.indexOf(value) === index
-      //       )
-      // );
-
-      this.setAilment(hunterTable, left, 'wind');
-      this.setAilment(hunterTable, right, 'wind');
-      this.setAilment(hunterTable, top, 'wind');
-      this.setAilment(hunterTable, bottom, 'wind');
+      const well = this.searchIndex(hunterTable, 'well');
+      this.setAilment(hunterTable, well, 'death');
+      this.setAilments(hunterTable, well, 'wind');
     });
 
     const wampus = this.searchIndex(hunterTable, 'wampus');
+    this.setAilment(hunterTable, wampus, 'death');
+    this.setAilments(hunterTable, wampus, 'smell');
 
+    const gold = this.searchIndex(hunterTable, 'gold');
+    this.setAilment(hunterTable, gold, 'shine');
 
     this.hunterTable$.next(hunterTable);
     this.table$.next(table);
@@ -134,5 +111,17 @@ export class GameService {
             (value, index, self) => self.indexOf(value) === index
           )
     );
+  }
+
+  setAilments(table: any[][], position: any, ailment: string) {
+    const left = { ...position, x: position.x - 1 };
+    const right = { ...position, x: position.x + 1 };
+    const top = { ...position, y: position.y + 1 };
+    const bottom = { ...position, y: position.y - 1 };
+
+    this.setAilment(table, left, ailment);
+    this.setAilment(table, right, ailment);
+    this.setAilment(table, top, ailment);
+    this.setAilment(table, bottom, ailment);
   }
 }
