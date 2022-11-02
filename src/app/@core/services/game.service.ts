@@ -1,5 +1,13 @@
 import { Injectable } from '@angular/core';
-import { BehaviorSubject } from 'rxjs';
+import { table } from 'console';
+import {
+  BehaviorSubject,
+  combineLatest,
+  map,
+  pairwise,
+  startWith,
+  switchMap,
+} from 'rxjs';
 import { Parameters } from '../models/parameters';
 
 @Injectable({
@@ -9,7 +17,70 @@ export class GameService {
   parameters: Parameters | null = null;
   table$ = new BehaviorSubject<any>(null);
   hunterTable$ = new BehaviorSubject<any>(null);
-  hunter$ = new BehaviorSubject<any>(null);
+
+  direction$ = new BehaviorSubject<any>(null);
+
+  hunter$ = combineLatest([this.hunterTable$, this.direction$]).pipe(
+    startWith([]),
+    map(([table, direction, ...self]) => {
+      const position: any = {
+        y: table?.length - 1,
+        x: 0,
+      };
+      return self.length
+        ? null
+        : {
+            position: position,
+            state: this.get(table, {
+              y: table?.length - 1,
+              x: 0,
+            }),
+            arrows: this.parameters?.arrows,
+            direction,
+            ailments: this.get(table, position),
+          };
+    }),
+    pairwise(),
+    switchMap(([oldHunter, newHunter]) =>
+      combineLatest([this.hunterTable$, this.direction$]).pipe(
+        map(([table, direction]) => {
+          switch (direction) {
+            case null:
+              return { newHunter, direction: 'right' };
+            case 'right': {
+              const position = oldHunter?.position;
+              const newPosition = { ...position, x: position + 1 };
+              const hunter = {
+                ...oldHunter,
+                position: newPosition,
+                arrows:
+                  oldHunter?.direction === 'top' ||
+                  oldHunter?.direction === 'bottom'
+                    ? Number(oldHunter?.arrows) - 1
+                    : oldHunter?.arrows,
+              };
+              return hunter;
+            }
+            case 'left': {
+              const position = oldHunter?.position;
+              const hunter = {
+                ...oldHunter,
+                position: { ...position, x: position - 1 },
+                arrows:
+                  oldHunter?.direction === 'top' ||
+                  oldHunter?.direction === 'bottom'
+                    ? Number(oldHunter?.arrows) - 1
+                    : oldHunter?.arrows,
+              };
+
+              return hunter;
+            }
+          }
+          return null;
+        })
+      )
+    )
+  );
 
   constructor() {}
 
@@ -90,7 +161,7 @@ export class GameService {
   }
 
   get(table: any[][], { x, y }: { x: number; y: number }) {
-    return table[y] && table[y][x] ? table[y][x] : null;
+    return table[y] && table[y][x] ? table[y][x] : undefined;
   }
 
   set(table: any[][], { x, y }: { x: number; y: number }, value: any) {
