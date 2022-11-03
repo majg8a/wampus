@@ -1,23 +1,5 @@
-import {
-  AfterViewInit,
-  Component,
-  ElementRef,
-  OnDestroy,
-  OnInit,
-  ViewChild,
-} from '@angular/core';
-import {
-  BehaviorSubject,
-  combineLatest,
-  distinctUntilChanged,
-  first,
-  map,
-  of,
-  Subscription,
-  take,
-  tap,
-} from 'rxjs';
-import { Parameters } from 'src/app/@core/models/parameters';
+import { Component } from '@angular/core';
+import { Observable } from 'rxjs';
 import { GameService } from 'src/app/@core/services/game.service';
 
 @Component({
@@ -26,7 +8,8 @@ import { GameService } from 'src/app/@core/services/game.service';
     <ng-container
       *ngIf="{
         table: table$ | async,
-        hunterTable: hunterTable$ | async
+        hunterTable: hunterTable$ | async,
+        hunter: hunter$ | async
       } as state"
     >
       <div class="relative grid content-center justify-center w-full h-screen">
@@ -42,9 +25,19 @@ import { GameService } from 'src/app/@core/services/game.service';
         </div>
 
         <div class="absolute self-center justify-self-center">
-          <div *ngFor="let row of state.hunterTable" class="flex">
-            <div *ngFor="let cell of row" class="w-20 h-20">
-              {{ cell | json }}
+          <div *ngFor="let row of state.hunterTable; index as y" class="flex">
+            <div *ngFor="let cell of row; index as x" class="w-20 h-20">
+              <!-- {{ cell | json }} -->
+
+              <ng-container
+                *ngIf="
+                  state.hunter?.position?.x === x &&
+                  state.hunter?.position?.y === y
+                "
+              >
+                hunter
+                <!-- {{ state.hunter | json}} -->
+              </ng-container>
             </div>
           </div>
         </div>
@@ -54,7 +47,7 @@ import { GameService } from 'src/app/@core/services/game.service';
   styles: [],
 })
 export class GameComponent {
-  table$ = this.gameService.table$;
+  table$ = this.gameService.initialTable$;
   // table$ = of(this.gameService.parameters).pipe(
   //   map((parameters: Parameters | any) => {
   //     let wells = parameters?.wells;
@@ -89,6 +82,7 @@ export class GameComponent {
   // );
 
   hunterTable$ = this.gameService.hunterTable$;
+  hunter$: Observable<any> = this.gameService.hunter$;
   // hunterTable$ = this.table$.pipe(
   //   map((table) => {
   //     const newTable = [...table].map((a) => [...a]);

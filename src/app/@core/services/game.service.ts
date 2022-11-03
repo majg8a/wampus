@@ -3,6 +3,10 @@ import { table } from 'console';
 import {
   BehaviorSubject,
   combineLatest,
+  debounce,
+  debounceTime,
+  distinctUntilChanged,
+  interval,
   map,
   pairwise,
   startWith,
@@ -15,74 +19,90 @@ import { Parameters } from '../models/parameters';
 })
 export class GameService {
   parameters: Parameters | null = null;
-  table$ = new BehaviorSubject<any>(null);
+  initialTable$ = new BehaviorSubject<any>(null);
   hunterTable$ = new BehaviorSubject<any>(null);
+  direction$ = new BehaviorSubject<any>('top');
+  initialHunter$ = this.hunterTable$.pipe(
+    map((table) => ({
+      direction: 'right',
+      arrows: this.parameters?.arrows,
+      position: { y: table?.length - 1, x: 0 },
+    }))
+  );
 
-  direction$ = new BehaviorSubject<any>(null);
+  hunter$ = combineLatest([
+    this.direction$,
+    this.initialHunter$,
+    this.hunterTable$,
+    this.initialTable$,
+  ]).pipe(
+    // debounceTime(500),
+    map(([direction, hunter, hunterTable, table]) => ({
+      ...hunter,
+      direction,
+      position: this.changePosition(table, direction, hunter.position),
+      arrows: this.shootArrow(hunter, direction),
+    }))
+  );
 
-  hunter$ = combineLatest([this.hunterTable$, this.direction$]).pipe(
-    startWith([]),
-    map(([table, direction, ...self]) => {
-      const position: any = {
-        y: table?.length - 1,
-        x: 0,
-      };
-      return self.length
-        ? null
-        : {
-            position: position,
-            state: this.get(table, {
-              y: table?.length - 1,
-              x: 0,
-            }),
-            arrows: this.parameters?.arrows,
-            direction,
-            ailments: this.get(table, position),
-          };
-    }),
-    pairwise(),
-    switchMap(([oldHunter, newHunter]) =>
-      combineLatest([this.hunterTable$, this.direction$]).pipe(
-        map(([table, direction]) => {
-          switch (direction) {
-            case null:
-              return { newHunter, direction: 'right' };
-            case 'right': {
-              const position = oldHunter?.position;
-              const newPosition = { ...position, x: position + 1 };
-              const hunter = {
-                ...oldHunter,
-                position: newPosition,
-                arrows:
-                  oldHunter?.direction === 'top' ||
-                  oldHunter?.direction === 'bottom'
-                    ? Number(oldHunter?.arrows) - 1
-                    : oldHunter?.arrows,
-              };
-              return hunter;
-            }
-            case 'left': {
-              const position = oldHunter?.position;
-              const hunter = {
-                ...oldHunter,
-                position: { ...position, x: position - 1 },
-                arrows:
-                  oldHunter?.direction === 'top' ||
-                  oldHunter?.direction === 'bottom'
-                    ? Number(oldHunter?.arrows) - 1
-                    : oldHunter?.arrows,
-              };
+  arrowsShooted: any[] = [];
 
-              return hunter;
-            }
+  arrows$ = combineLatest([
+    interval(500),
+    this.initialTable$.pipe(
+      distinctUntilChanged((a, b) => JSON.stringify(a) === JSON.stringify(b))
+    ),
+    this.direction$,
+  ]).pipe(
+    map(([, table]) => {
+      this.arrowsShooted
+        .map((arrowShooted) => {
+          let position = this.changePosition(table, arrowShooted.direction, {
+            ...arrowShooted.position,
+          });
+
+          if (this.get(table, position) === 'wampus') {
+            this.initialTable$.next(this.set(table, position, 'death'));
           }
-          return null;
+
+          return {
+            ...arrowShooted,
+            position:
+              this.get(table, position) === undefined
+                ? position
+                : arrowShooted.position,
+          };
         })
-      )
-    )
+        .filter((a) => this.get(table, a.position) === undefined);
+    })
   );
 
   constructor() {}
+
+  shootArrow(hunter: any, direction: any) {
+    let arrows = hunter?.arrows;
+
+    switch (true) {
+      case direction === 'right' &&
+        (hunter?.direction === 'top' || hunter?.direction === 'bottom'):
+        arrows = arrows - 1;
+        break;
+      case direction === 'left' &&
+        (hunter?.direction === 'top' || hunter?.direction === 'bottom'):
+        arrows = arrows - 1;
+        break;
+      case direction === 'top' &&
+        (hunter?.direction === 'left' || hunter?.direction === 'right'):
+        arrows = arrows - 1;
+        break;
+      case direction === 'bottom' &&
+        (hunter?.direction === 'left' || hunter?.direction === 'right'):
+        arrows = arrows - 1;
+        break;
+    }
+    this.arrowsShooted.push({ position: hunter.position, direction });
+    return arrows;
+  }
 
   handleNewGame(parameters: Parameters) {
     this.parameters = parameters;
@@ -123,13 +143,6 @@ export class GameService {
       table[nullIndexes.y][nullIndexes.y] = home;
     }
 
-    // hunterTable[hunterTable.length - 1][0] = {
-    //   arrows: parameters.arrows,
-    //   ailments: [],
-    //   position: { y: hunterTable.length - 1, x: 0 },
-    //   name: 'hunter',
-    //   direction: 'right',
-    // };
     table[table.length - 1][0] = 'entry';
     hunterTable[hunterTable.length - 1][0] = ['safety'];
 
@@ -147,7 +160,7 @@ export class GameService {
     this.setAilment(hunterTable, gold, 'shine');
 
     this.hunterTable$.next(hunterTable);
-    this.table$.next(table);
+    this.initialTable$.next(table);
   }
 
   searchIndex(table: any[][], value: any) {
@@ -161,6 +174,7 @@ export class GameService {
   }
 
   get(table: any[][], { x, y }: { x: number; y: number }) {
+    table = table ? table : [[]];
     return table[y] && table[y][x] ? table[y][x] : undefined;
   }
 
@@ -187,12 +201,31 @@ export class GameService {
   setAilments(table: any[][], position: any, ailment: string) {
     const left = { ...position, x: position.x - 1 };
     const right = { ...position, x: position.x + 1 };
-    const top = { ...position, y: position.y + 1 };
-    const bottom = { ...position, y: position.y - 1 };
+    const top = { ...position, y: position.y - 1 };
+    const bottom = { ...position, y: position.y + 1 };
 
     this.setAilment(table, left, ailment);
     this.setAilment(table, right, ailment);
     this.setAilment(table, top, ailment);
     this.setAilment(table, bottom, ailment);
+  }
+
+  changePosition(table: any[][], direction: any, position: any) {
+    let newPosition = position;
+    switch (direction) {
+      case 'right':
+        newPosition = { ...position, x: position.x + 1 };
+        break;
+      case 'left':
+        newPosition = { ...position, x: position.x - 1 };
+        break;
+      case 'top':
+        newPosition = { ...position, y: position.y - 1 };
+        break;
+      case 'bottom':
+        newPosition = { ...position, y: position.y + 1 };
+        break;
+    }
+    return this.get(table, newPosition) === undefined ? position : newPosition;
   }
 }
