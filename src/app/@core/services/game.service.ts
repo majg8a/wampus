@@ -9,6 +9,7 @@ import {
   interval,
   map,
   pairwise,
+  skipWhile,
   startWith,
   switchMap,
 } from 'rxjs';
@@ -19,30 +20,48 @@ import { Parameters } from '../models/parameters';
 })
 export class GameService {
   parameters: Parameters | null = null;
+  arrows = 0;
+  hunterPosition: { x: number; y: number } | null = null;
   initialTable$ = new BehaviorSubject<any>(null);
+  table$ = this.initialTable$.pipe(skipWhile((a) => a));
   hunterTable$ = new BehaviorSubject<any>(null);
-  direction$ = new BehaviorSubject<any>('top');
-  initialHunter$ = this.hunterTable$.pipe(
-    map((table) => ({
-      direction: 'right',
-      arrows: this.parameters?.arrows,
-      position: { y: table?.length - 1, x: 0 },
-    }))
-  );
+  direction$ = new BehaviorSubject<any>(null);
+  // initialHunter$ = this.hunterTable$.pipe(
+  //   skipWhile((a) => a),
+  //   map((table: any[][]) => {
+  //     this.hunterPosition = { y: table?.length - 1, x: 0 };
+  //     return {
+  //       direction: 'right',
+  //       arrows: this.parameters?.arrows,
+  //       position: this.hunterPosition,
+  //     };
+  //   })
+  // );
+  initialHunter$ = new BehaviorSubject<any>(null);
 
   hunter$ = combineLatest([
-    this.direction$,
-    this.initialHunter$,
+    this.direction$.pipe(pairwise()),
+    this.initialHunter$.pipe(
+      distinctUntilChanged(
+        (prev, next) => JSON.stringify(prev) === JSON.stringify(next)
+      )
+    ),
     this.hunterTable$,
-    this.initialTable$,
+    this.table$,
   ]).pipe(
-    // debounceTime(500),
-    map(([direction, hunter, hunterTable, table]) => ({
-      ...hunter,
-      direction,
-      position: this.changePosition(table, direction, hunter.position),
-      arrows: this.shootArrow(hunter, direction),
-    }))
+    map(([directions, hunter, hunterTable, table]) => {
+      this.hunterPosition = this.changePosition(
+        table,
+        directions[1],
+        this.hunterPosition
+      );
+      return {
+        ...hunter,
+        direction: directions[1],
+        position: this.hunterPosition,
+        arrows: this.shootArrow(directions),
+      };
+    })
   );
 
   arrowsShooted: any[] = [];
@@ -55,16 +74,14 @@ export class GameService {
     this.direction$,
   ]).pipe(
     map(([, table]) => {
-      this.arrowsShooted
+      this.arrowsShooted = this.arrowsShooted
         .map((arrowShooted) => {
           let position = this.changePosition(table, arrowShooted.direction, {
             ...arrowShooted.position,
           });
-
           if (this.get(table, position) === 'wampus') {
-            this.initialTable$.next(this.set(table, position, 'death'));
+            this.initialTable$.next(this.set(table, position, 'death wampus'));
           }
-
           return {
             ...arrowShooted,
             position:
@@ -79,33 +96,43 @@ export class GameService {
 
   constructor() {}
 
-  shootArrow(hunter: any, direction: any) {
-    let arrows = hunter?.arrows;
+  shootArrow(directions: any[]) {
+    let arrows = this.arrows;
+    const oldArrows = this.arrows;
+    const [oldDirection, newDirection] = directions;
+    console.log(oldDirection, newDirection);
 
+    if (!arrows) {
+      return 0;
+    }
     switch (true) {
-      case direction === 'right' &&
-        (hunter?.direction === 'top' || hunter?.direction === 'bottom'):
+      case newDirection === 'right' &&
+        (oldDirection === 'up' || oldDirection === 'down'):
         arrows = arrows - 1;
         break;
-      case direction === 'left' &&
-        (hunter?.direction === 'top' || hunter?.direction === 'bottom'):
+      case newDirection === 'left' &&
+        (oldDirection === 'up' || oldDirection === 'down'):
         arrows = arrows - 1;
         break;
-      case direction === 'top' &&
-        (hunter?.direction === 'left' || hunter?.direction === 'right'):
+      case newDirection === 'up' &&
+        (oldDirection === 'left' || oldDirection === 'right'):
         arrows = arrows - 1;
         break;
-      case direction === 'bottom' &&
-        (hunter?.direction === 'left' || hunter?.direction === 'right'):
+      case newDirection === 'down' &&
+        (oldDirection === 'left' || oldDirection === 'right'):
         arrows = arrows - 1;
         break;
     }
-    this.arrowsShooted.push({ position: hunter.position, direction });
-    return arrows;
+    if (arrows < oldArrows) {
+      this.arrowsShooted.push({ position: this.hunterPosition, newDirection });
+      this.arrows = arrows;
+    }
+    return this.arrows;
   }
 
   handleNewGame(parameters: Parameters) {
     this.parameters = parameters;
+    this.arrows = parameters.arrows;
     let wells = parameters?.wells;
     let oneDimentionalTable = [...Array(parameters.cells)]
       .map((o, i) => {
@@ -159,6 +186,16 @@ export class GameService {
     const gold = this.searchIndex(hunterTable, 'gold');
     this.setAilment(hunterTable, gold, 'shine');
 
+    this.hunterPosition = { y: table?.length - 1, x: 0 };
+
+    const hunter = {
+      arrows: parameters.arrows,
+      position: this.hunterPosition,
+      direction: 'right',
+    };
+
+    this.initialHunter$.next(hunter);
+    this.direction$.next(null);
     this.hunterTable$.next(hunterTable);
     this.initialTable$.next(table);
   }
@@ -174,8 +211,10 @@ export class GameService {
   }
 
   get(table: any[][], { x, y }: { x: number; y: number }) {
-    table = table ? table : [[]];
-    return table[y] && table[y][x] ? table[y][x] : undefined;
+    if (!table || table[y] === undefined || !table[y][x] === undefined) {
+      return undefined;
+    }
+    return table[y][x];
   }
 
   set(table: any[][], { x, y }: { x: number; y: number }, value: any) {
@@ -201,13 +240,13 @@ export class GameService {
   setAilments(table: any[][], position: any, ailment: string) {
     const left = { ...position, x: position.x - 1 };
     const right = { ...position, x: position.x + 1 };
-    const top = { ...position, y: position.y - 1 };
-    const bottom = { ...position, y: position.y + 1 };
+    const up = { ...position, y: position.y - 1 };
+    const down = { ...position, y: position.y + 1 };
 
     this.setAilment(table, left, ailment);
     this.setAilment(table, right, ailment);
-    this.setAilment(table, top, ailment);
-    this.setAilment(table, bottom, ailment);
+    this.setAilment(table, up, ailment);
+    this.setAilment(table, down, ailment);
   }
 
   changePosition(table: any[][], direction: any, position: any) {
@@ -219,11 +258,14 @@ export class GameService {
       case 'left':
         newPosition = { ...position, x: position.x - 1 };
         break;
-      case 'top':
+      case 'up':
         newPosition = { ...position, y: position.y - 1 };
         break;
-      case 'bottom':
+      case 'down':
         newPosition = { ...position, y: position.y + 1 };
+        break;
+      case null:
+        newPosition = position;
         break;
     }
     return this.get(table, newPosition) === undefined ? position : newPosition;

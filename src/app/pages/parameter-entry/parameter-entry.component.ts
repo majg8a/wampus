@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import {
   AbstractControl,
   FormBuilder,
+  FormControl,
   FormGroup,
   ValidatorFn,
   Validators,
@@ -50,13 +51,15 @@ export class ParameterEntryComponent {
   // Se debe parametrizar el número de celdas del tablero, el número de pozos y
   // cuantas flechas dispone el cazador.
 
-  forbbidenWellsNumber = (): ValidatorFn => (control: AbstractControl) => {
+  forbbidenWellsNumber: ValidatorFn = (control: AbstractControl) => {
     const cells = control.value?.cells;
     const wells = control.value?.wells;
+    console.log(wells > cells - 3);
+
     return wells > cells - 3 ? { forbbidenWellsNumber: true } : null;
   };
 
-  forbbidenCells = (): ValidatorFn => (control: AbstractControl) => {
+  forbbidenCells = (control: AbstractControl) => {
     const cells = control.value;
     try {
       [...Array(Math.sqrt(cells))];
@@ -88,16 +91,17 @@ export class ParameterEntryComponent {
 
   handleCreateForm() {
     return of(
-      this.formBuilder.group(
+      new FormGroup(
         {
-          cells: [
-            16,
-            [Validators.min(4), Validators.required, this.forbbidenCells()],
-          ],
-          wells: [3, [Validators.min(0)]],
-          arrows: [1],
+          cells: new FormControl(16, [
+            Validators.min(4),
+            Validators.required,
+            this.forbbidenCells,
+          ]),
+          wells: new FormControl(3, [Validators.min(0), Validators.required]),
+          arrows: new FormControl(10, [Validators.min(0), Validators.required]),
         },
-        { validartors: [this.forbbidenWellsNumber()] }
+        [this.forbbidenWellsNumber]
       )
     );
   }
