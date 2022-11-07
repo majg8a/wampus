@@ -23,8 +23,40 @@ export class GameService {
   arrows = 0;
   hunterPosition: { x: number; y: number } | null = null;
   initialTable$ = new BehaviorSubject<any>(null);
-  table$ = this.initialTable$.pipe(skipWhile((a) => a));
-  hunterTable$ = new BehaviorSubject<any>(null);
+  table$ = this.initialTable$.pipe(skipWhile((a) => Boolean(a)));
+  hunterTable$ = this.table$.pipe(
+    map((table: any[][]) => {
+      if (!table) {
+        return;
+      }
+      const hunterTable = [...table.map((cell) => [...cell])];
+      table.forEach((row, y) => {
+        row.forEach((cell, x) => {
+          const position = {
+            y,
+            x,
+          };
+          switch (cell) {
+            case 'well':
+              this.setAilment(hunterTable, position, 'death');
+              this.setAilments(hunterTable, position, 'wind');
+              break;
+            case 'wampus':
+              this.setAilment(hunterTable, position, 'death');
+              this.setAilments(hunterTable, position, 'smell');
+              break;
+            case 'gold':
+              this.setAilment(hunterTable, position, 'shine');
+              break;
+            default:
+              break;
+          }
+        });
+      });
+
+      return hunterTable;
+    })
+  );
   direction$ = new BehaviorSubject<any>(null);
   // initialHunter$ = this.hunterTable$.pipe(
   //   skipWhile((a) => a),
@@ -46,20 +78,38 @@ export class GameService {
         (prev, next) => JSON.stringify(prev) === JSON.stringify(next)
       )
     ),
-    this.hunterTable$,
-    this.table$,
+    this.hunterTable$.pipe(
+      distinctUntilChanged(
+        (prev, next) => JSON.stringify(prev) === JSON.stringify(next)
+      )
+    ),
+    this.table$.pipe(
+      distinctUntilChanged(
+        (prev, next) => JSON.stringify(prev) === JSON.stringify(next)
+      )
+    ),
   ]).pipe(
+    startWith([]),
+    // distinctUntilChanged(
+    //   ([prevDirection, ...prev], [nextDirection, ...next]) =>
+    //     JSON.stringify(prevDirection) === JSON.stringify(nextDirection)
+    // ),
     map(([directions, hunter, hunterTable, table]) => {
+      if (!directions || !hunter || !hunterTable || !table) {
+        return;
+      }
       this.hunterPosition = this.changePosition(
         table,
         directions[1],
         this.hunterPosition
       );
+
       return {
         ...hunter,
         direction: directions[1],
         position: this.hunterPosition,
         arrows: this.shootArrow(directions),
+        ailments: this.get(hunterTable, this.hunterPosition as any),
       };
     })
   );
@@ -100,8 +150,6 @@ export class GameService {
     let arrows = this.arrows;
     const oldArrows = this.arrows;
     const [oldDirection, newDirection] = directions;
-    console.log(oldDirection, newDirection);
-
     if (!arrows) {
       return 0;
     }
@@ -161,30 +209,19 @@ export class GameService {
     }, []);
 
     const hunterTable = [...table.map((row) => [...row])];
-    const home = hunterTable[hunterTable.length - 1][0];
-    const isHomeNull = Boolean(home);
+    const home = table[table.length - 1][0];
+    const isHome = Boolean(home);
 
-    if (isHomeNull) {
+    console.log(home);
+
+    if (isHome) {
       const nullIndexes = this.searchIndex(table, null);
-      hunterTable[nullIndexes.y][nullIndexes.y] = home;
-      table[nullIndexes.y][nullIndexes.y] = home;
+      hunterTable[nullIndexes.y][nullIndexes.x] = home;
+      table[nullIndexes.y][nullIndexes.x] = home;
     }
 
     table[table.length - 1][0] = 'entry';
     hunterTable[hunterTable.length - 1][0] = ['safety'];
-
-    [...Array(parameters.wells)].forEach(() => {
-      const well = this.searchIndex(hunterTable, 'well');
-      this.setAilment(hunterTable, well, 'death');
-      this.setAilments(hunterTable, well, 'wind');
-    });
-
-    const wampus = this.searchIndex(hunterTable, 'wampus');
-    this.setAilment(hunterTable, wampus, 'death');
-    this.setAilments(hunterTable, wampus, 'smell');
-
-    const gold = this.searchIndex(hunterTable, 'gold');
-    this.setAilment(hunterTable, gold, 'shine');
 
     this.hunterPosition = { y: table?.length - 1, x: 0 };
 
@@ -196,7 +233,7 @@ export class GameService {
 
     this.initialHunter$.next(hunter);
     this.direction$.next(null);
-    this.hunterTable$.next(hunterTable);
+    //this.hunterTable$.next(hunterTable);
     this.initialTable$.next(table);
   }
 
@@ -231,9 +268,9 @@ export class GameService {
       !this.get(table, position) ||
         typeof this.get(table, position) === 'string'
         ? [ailment]
-        : [...this.get(table, position), ailment].filter(
-            (value, index, self) => self.indexOf(value) === index
-          )
+        : [...this.get(table, position)]
+            .concat([ailment])
+            .filter((value, index, self) => self.indexOf(value) === index)
     );
   }
 

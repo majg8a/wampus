@@ -9,10 +9,14 @@ import { GameService } from 'src/app/@core/services/game.service';
       *ngIf="{
         table: table$ | async,
         hunterTable: hunterTable$ | async,
-        hunter: hunter$ | async
+        hunter: hunter$ | async,
+        arrows: arrows$ | async
       } as state"
     >
-      <div class="relative grid content-center justify-center w-full h-full">
+      <div>
+        {{ state.hunter?.ailments | json }}
+      </div>
+      <div class="relative grid content-center justify-center w-full h-1/2">
         <div class="border-2 border-black overflow-hidden">
           <div class="flex " *ngFor="let row of state.table">
             <div
@@ -42,7 +46,6 @@ import { GameService } from 'src/app/@core/services/game.service';
                   <br />
                   {{ state.hunter?.arrows }}
                 </div>
-                <!-- {{ state.hunter | json}} -->
               </ng-container>
             </div>
           </div>
@@ -59,11 +62,12 @@ export class GameComponent {
   hunter$: Observable<any> = this.gameService.hunter$;
   direction$ = this.gameService.direction$;
 
+  arrows$ = this.gameService.arrows$;
+
   constructor(private gameService: GameService) {}
 
   @HostListener('window:keydown', ['$event'])
   handleKeyDown(event: KeyboardEvent) {
-    console.log(event.key);
     const cases: any = {
       a: 'left',
       s: 'down',
